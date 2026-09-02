@@ -1,0 +1,35 @@
+rag-reliability-layer/
+│
+├── ingestion/
+│   ├── loader.py
+│   ├── chunker.py
+│   └── embedder.py
+│
+├── retrieval/
+│   ├── dense.py
+│   ├── sparse.py
+│   └── fusion.py
+│
+├── agents/
+│   ├── router.py
+│   ├── retrieval_agent.py
+│   └── synthesis_agent.py
+│
+├── guardrails/
+│   ├── input_guard.py
+│   └── output_guard.py
+│
+├── judge/
+│   ├── evaluator.py
+│   └── retry.py
+│
+├── api/
+│   └── main.py          # FastAPI app
+│
+├── notebooks/
+│   ├── phase1_exploration.ipynb
+│   └── phase2_exploration.ipynb
+│
+├── docker-compose.yml
+├── requirements.txt
+└── README.md

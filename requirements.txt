@@ -1,0 +1,11 @@
+llama-index
+llama-index-vector-stores-qdrant
+llama-index-embeddings-huggingface
+llama-index-readers-file
+llama-index-core
+qdrant-client
+fastembed
+sentence-transformers
+jupyter
+ipykernel
+docx2txt
