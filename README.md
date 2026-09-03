@@ -54,11 +54,7 @@ Verified Answer or Transparent Refusal
 NoHallucination/
 │
 ├── notebooks/
-│   ├── phase1_exploration.ipynb
-│   ├── phase2_exploration.ipynb
-│   ├── phase3_exploration.ipynb
-│   ├── phase4_exploration.ipynb
-│   └── phase5_exploration.ipynb
+│   ├── main.ipynb
 │
 ├── ingestion/
 │   ├── loader.py
@@ -96,7 +92,7 @@ NoHallucination/
 
 ## Build Progress
 - [x] Phase 1: Smart document ingestion and hybrid retrieval
-- [ ] Phase 2: Stateful multi-agent orchestration
+- [ ] Phase 2: Stateful multi-agent orchestration (in progress)
 - [ ] Phase 3: Guardrail layer
 - [ ] Phase 4: LLM-as-a-Judge evaluator
 - [ ] Phase 5: Observability and deployment
