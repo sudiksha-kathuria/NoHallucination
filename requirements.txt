@@ -9,3 +9,6 @@ sentence-transformers
 jupyter
 ipykernel
 docx2txt
+langgraph
+python-dotenv
+llama-index-llms-groq
