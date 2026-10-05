@@ -31,7 +31,7 @@ Verified Answer or Transparent Refusal
 | Embeddings | BAAI/bge-small-en-v1.5 (HuggingFace) |
 | Hybrid search | Dense + BM25 sparse via Qdrant |
 | Agent orchestration | LangGraph |
-| LLM | llama-3.3-70b via Groq |
+| LLM | Qwen/qwen3-8b-27b via Groq |
 | Input/Output guardrails | Microsoft Presidio, Detoxify |
 | LLM evaluation | LLM-as-a-Judge with RAGAS metrics |
 | Observability | LangSmith |
@@ -92,7 +92,7 @@ NoHallucination/
 
 ## Build Progress
 - [x] Phase 1: Smart document ingestion and hybrid retrieval
-- [ ] Phase 2: Stateful multi-agent orchestration (in progress)
+- [x] Phase 2: Stateful multi-agent orchestration
 - [ ] Phase 3: Guardrail layer
 - [ ] Phase 4: LLM-as-a-Judge evaluator
 - [ ] Phase 5: Observability and deployment
@@ -109,6 +109,40 @@ NoHallucination/
 - Sparse BM25 keyword search via Qdrant FastEmbed
 - Hybrid fusion combining both retrieval methods
 - Persistent storage via Docker volume mount
+
+## Phase 2: What is Built
+
+**LangGraph multi-agent pipeline**
+- Router Agent: classifies query as factual, conversational, or unclear; detects and blocks prompt injection attempts
+- Retrieval Agent: rewrites the query for better retrieval, fetches top-3 hybrid chunks from Qdrant, deduplicates by node ID
+- Synthesis Agent: generates a grounded answer using only retrieved context; strips model thinking tokens; refuses if context is insufficient
+
+**Graph structure**
+
+START → router → (blocked → END) or (continue → retrieval) → synthesis → END
+
+## Problems Faced and How They Were Handled
+
+**Groq model unavailable**
+`llama-3.3-70b-versatile` was not available on the free tier. Switched to `qwen/qwen3-8b-27b`, which works but produces `<think>...</think>` blocks in responses. Added stripping logic in the synthesis agent to clean these before returning the answer.
+
+**Qwen thinking tokens in rewritten queries**
+The retrieval agent uses the LLM to rewrite queries before searching. Qwen sometimes wraps the rewritten query in `<think>` tags, which then gets passed to the retriever and degrades search quality. Fixed by stripping the think block from `rewritten_query` before retrieval.
+
+**Qdrant hybrid search setup**
+Setting up hybrid dense + sparse search required Qdrant FastEmbed (`Qdrant/bm25`) as the sparse model. Initial setup failed because the vector store was not initialized with `enable_hybrid=True` and the sparse vector name was not configured. Fixed by passing the correct parameters to `QdrantVectorStore`.
+
+**Semantic chunker producing too few chunks**
+For short documents, `SemanticSplitterNodeParser` at threshold 95 produced fewer than 3 chunks, making retrieval ineffective. Added automatic retry logic: if a document produces fewer than 3 chunks at threshold 95, it retries at threshold 70.
+
+**Duplicate chunks in Qdrant**
+Re-running the ingestion cell without clearing the collection first caused the same documents to be stored multiple times under different node IDs. Deduplication by node ID in the retrieval agent only partially helped since all 3 retrieved results were duplicates of the same chunk. Fixed by deleting the collection and re-ingesting once cleanly.
+
+**LangGraph state not propagating between nodes**
+Retrieved chunks were showing as 0 in the final result even though the retrieval agent was finding 3 chunks. Root cause: a typo in `PipelineState` — the field was defined as `retrieved_chunk` (no s) but all agents used `retrieved_chunks`. LangGraph silently drops keys that are not in the TypedDict schema, so the chunks were never written to state. Fixed by correcting the field name.
+
+**Docker container not persisting between sessions**
+Qdrant data was lost between sessions because the container was started without a volume mount. Fixed by adding `-v $(pwd)/qdrant_storage:/qdrant/storage` and `--restart unless-stopped` to the docker run command.
 
 ## Setup
 
