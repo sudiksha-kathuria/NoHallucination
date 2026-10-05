@@ -110,12 +110,28 @@ NoHallucination/
 - Hybrid fusion combining both retrieval methods
 - Persistent storage via Docker volume mount
 
-## Phase 2: What is Built
+## Phase 2: 
 
 **LangGraph multi-agent pipeline**
 - Router Agent: classifies query as factual, conversational, or unclear; detects and blocks prompt injection attempts
 - Retrieval Agent: rewrites the query for better retrieval, fetches top-3 hybrid chunks from Qdrant, deduplicates by node ID
 - Synthesis Agent: generates a grounded answer using only retrieved context; strips model thinking tokens; refuses if context is insufficient
+
+## Phase 3: 
+
+**Input guardrail — PII detection**
+- Runs after the router and before retrieval
+- Uses Microsoft Presidio's AnalyzerEngine with spaCy's en_core_web_lg English model for named entity recognition
+- Detects personally identifiable information in the user's query — names, email addresses, phone numbers, locations, and other sensitive identifiers
+- If PII is found, the pipeline blocks immediately and returns the entity types detected as the block reason
+- If no PII is found, the query proceeds to retrieval
+
+**Output guardrail — toxicity detection**
+- Runs after synthesis and before the final response is returned
+- Uses Detoxify's "original" model, trained on the Jigsaw Toxic Comment Classification dataset
+- Scores the generated answer across six categories: toxicity, severe toxicity, obscene, threat, insult, and identity attack
+- If the toxicity score exceeds 0.5, the pipeline blocks the response and returns the score as the block reason
+- If the answer is clean, all six scores are stored in state and the response is returned
 
 **Graph structure**
 
@@ -143,6 +159,9 @@ Retrieved chunks were showing as 0 in the final result even though the retrieval
 
 **Docker container not persisting between sessions**
 Qdrant data was lost between sessions because the container was started without a volume mount. Fixed by adding `-v $(pwd)/qdrant_storage:/qdrant/storage` and `--restart unless-stopped` to the docker run command.
+
+**Input_guard node never executed**
+The input_guard node was added to the graph but the conditional edge from the router still pointed directly to retrieval instead of input_guard, so the node was wired up but never reached. Fixed by correcting the router's "continue" branch to point to input_guard, which then continues to retrieval.
 
 ## Setup
 
