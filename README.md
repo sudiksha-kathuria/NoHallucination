@@ -93,7 +93,7 @@ NoHallucination/
 ## Build Progress
 - [x] Phase 1: Smart document ingestion and hybrid retrieval
 - [x] Phase 2: Stateful multi-agent orchestration
-- [ ] Phase 3: Guardrail layer
+- [x] Phase 3: Guardrail layer
 - [ ] Phase 4: LLM-as-a-Judge evaluator
 - [ ] Phase 5: Observability and deployment
 
