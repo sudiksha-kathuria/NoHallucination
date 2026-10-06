@@ -12,3 +12,6 @@ docx2txt
 langgraph
 python-dotenv
 llama-index-llms-groq
+supabase==2.32.0
+supabase-auth==2.32.0
+supabase-functions==2.32.0
