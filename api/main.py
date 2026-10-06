@@ -242,17 +242,17 @@ def run_query(body: QueryRequest, user=Depends(get_current_user)):
             "is_toxic": result.get("is_toxic", False),
             "judge_scores": result.get("judge_scores"),
             "judge_overall": result.get("judge_overall"),
-            "blocked": result.get("blocked", False),
+            "blocked": result.get("should_block", False),
             "block_reason": result.get("block_reason"),
         }
         saved = service_client.table("queries").insert(query_record).execute()
         return {
             "query_id": saved.data[0]["id"],
-            "answer": query_record["answer"],
-            "blocked": query_record["blocked"],
-            "block_reason": query_record["block_reason"],
-            "judge_scores": query_record["judge_scores"],
-            "judge_overall": query_record["judge_overall"],
+            "answer": result.get("draft_answer"),
+            "blocked": result.get("should_block", False),
+            "block_reason": result.get("block_reason"),
+            "judge_scores": result.get("judge_scores"),
+            "judge_overall": result.get("judge_overall"),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

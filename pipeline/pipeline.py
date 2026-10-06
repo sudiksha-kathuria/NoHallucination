@@ -1,23 +1,21 @@
 import os
-import numpy as np
 from typing import TypedDict, List, Optional
 from functools import partial
 
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
 from llama_index.core import VectorStoreIndex
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.llms.groq import Groq
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from sklearn.metrics.pairwise import cosine_similarity
+from llama_index.llms.groq import Groq
 
+from ingestion.embedder import get_embedding_model
 from agents.router_agent import router_agent
 from agents.retrieval_agent import retrieval_agent
 from agents.synthesis_agent import synthesis_agent
 from guardrails.input_guard import input_guard_agent
 from guardrails.output_guard import output_guard_agent
-from ingestion.embedder import get_embedding_model
+from judge.judge import judge_agent
 
 load_dotenv()
 
@@ -44,39 +42,6 @@ class PipelineState(TypedDict, total=False):
     document_ids: Optional[List[str]]
 
 
-def judge_agent(state):
-    answer = state.get("draft_answer", " ")
-    query = state.get("rewritten_query") or state.get("original_query", " ")
-    chunks = state.get("retrieved_chunks", [])
-
-    def faithfulness(ans, cks):
-        if not cks or not ans:
-            return 0.0
-        a_tokens = set(ans.lower().split())
-        c_tokens = set(" ".join(cks).lower().split())
-        return round(len(a_tokens & c_tokens) / len(a_tokens), 4)
-
-    def relevancy(q, a):
-        q_emb = np.array(embedding_model.get_text_embedding(q)).reshape(1, -1)
-        a_emb = np.array(embedding_model.get_text_embedding(a)).reshape(1, -1)
-        return round(float(cosine_similarity(q_emb, a_emb)[0][0]), 4)
-
-    def context_util(ans, cks):
-        if not cks:
-            return 0.0
-        a_tokens = set(ans.lower().split())
-        used = sum(1 for c in cks if len(a_tokens & set(c.lower().split())) > 2)
-        return round(used / len(cks), 4)
-
-    scores = {
-        "faithfulness": faithfulness(answer, chunks),
-        "relevancy": relevancy(query, answer),
-        "context_utilisation": context_util(answer, chunks),
-    }
-    overall = round(float(np.mean(list(scores.values()))), 4)
-    return {**state, "judge_scores": scores, "judge_overall": overall}
-
-
 def _should_block(state):
     return "blocked" if state.get("should_block") else "continue"
 
@@ -86,20 +51,21 @@ def build_graph(collection_name: str):
     index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embedding_model)
 
     g = StateGraph(PipelineState)
-    g.add_node("router", partial(router_agent, llm=llm))
-    g.add_node("input_guard", input_guard_agent)
-    g.add_node("retrieval", partial(retrieval_agent, llm=llm, index=index))
-    g.add_node("synthesis", partial(synthesis_agent, llm=llm))
+    g.add_node("router",       partial(router_agent, llm=llm))
+    g.add_node("input_guard",  input_guard_agent)
+    g.add_node("retrieval",    partial(retrieval_agent, llm=llm, index=index))
+    g.add_node("synthesis",    partial(synthesis_agent, llm=llm))
     g.add_node("output_guard", output_guard_agent)
-    g.add_node("judge", judge_agent)
+    g.add_node("judge",        partial(judge_agent, embedding_model=embedding_model))
 
     g.add_edge(START, "router")
-    g.add_conditional_edges("router", _should_block, {"blocked": END, "continue": "input_guard"})
-    g.add_conditional_edges("input_guard", _should_block, {"blocked": END, "continue": "retrieval"})
+    g.add_conditional_edges("router",       _should_block, {"blocked": END, "continue": "input_guard"})
+    g.add_conditional_edges("input_guard",  _should_block, {"blocked": END, "continue": "retrieval"})
     g.add_edge("retrieval", "synthesis")
     g.add_edge("synthesis", "output_guard")
     g.add_conditional_edges("output_guard", _should_block, {"blocked": END, "continue": "judge"})
     g.add_edge("judge", END)
+
     return g.compile()
 
 

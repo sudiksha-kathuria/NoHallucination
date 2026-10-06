@@ -1,16 +1,16 @@
 import os
 import tempfile
-from llama_index.core import VectorStoreIndex, StorageContext
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
-from ingestion.loader import load_documents
 from ingestion.chunker import chunk_document
 from ingestion.embedder import get_embedding_model
 
 qdrant_client = QdrantClient(host="localhost", port=6333)
 embedding_model = get_embedding_model()
+
 
 def ingest_file_for_user(file_bytes, file_name, file_type, collection_name, document_id):
     suffix = f".{file_type}"
@@ -18,7 +18,7 @@ def ingest_file_for_user(file_bytes, file_name, file_type, collection_name, docu
         tmp.write(file_bytes)
         tmp_path = tmp.name
     try:
-        documents = load_documents(input_dir=os.path.dirname(tmp_path))
+        documents = SimpleDirectoryReader(input_files=[tmp_path]).load_data()
         for doc in documents:
             doc.metadata["document_id"] = document_id
             doc.metadata["file_name"] = file_name
@@ -40,6 +40,7 @@ def ingest_file_for_user(file_bytes, file_name, file_type, collection_name, docu
         print(f"[Ingest] {file_name} → {len(all_nodes)} chunks → '{collection_name}'")
     finally:
         os.unlink(tmp_path)
+
 
 def _ensure_collection(collection_name):
     existing = [c.name for c in qdrant_client.get_collections().collections]
