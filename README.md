@@ -94,7 +94,7 @@ NoHallucination/
 - [x] Phase 1: Smart document ingestion and hybrid retrieval
 - [x] Phase 2: Stateful multi-agent orchestration
 - [x] Phase 3: Guardrail layer
-- [ ] Phase 4: LLM-as-a-Judge evaluator
+- [x] Phase 4: LLM-as-a-Judge evaluator
 - [ ] Phase 5: Observability and deployment
 
 ## Phase 1: What is Built
@@ -110,14 +110,14 @@ NoHallucination/
 - Hybrid fusion combining both retrieval methods
 - Persistent storage via Docker volume mount
 
-## Phase 2: 
+## Phase 2: What is Built
 
 **LangGraph multi-agent pipeline**
 - Router Agent: classifies query as factual, conversational, or unclear; detects and blocks prompt injection attempts
 - Retrieval Agent: rewrites the query for better retrieval, fetches top-3 hybrid chunks from Qdrant, deduplicates by node ID
 - Synthesis Agent: generates a grounded answer using only retrieved context; strips model thinking tokens; refuses if context is insufficient
 
-## Phase 3: 
+## Phase 3: What is Built
 
 **Input guardrail — PII detection**
 - Runs after the router and before retrieval
@@ -136,6 +136,16 @@ NoHallucination/
 **Graph structure**
 
 START → router → (blocked → END) or (continue → retrieval) → synthesis → END
+
+## Phase 4: What is Built
+
+**Code-based evaluation (Judge Layer)**
+- Runs after the output guardrail on every non-blocked response
+- Evaluates answer quality using three deterministic metrics — no LLM calls required
+- Faithfulness: fraction of answer tokens present in the retrieved chunks (ROUGE-1 style precision) — measures whether the answer is grounded in source documents
+- Relevancy: cosine similarity between the query embedding and answer embedding using BAAI/bge-small-en-v1.5 — measures semantic alignment between question and answer
+- Context Utilization: fraction of retrieved chunks with at least 3 overlapping tokens with the answer — measures whether retrieval was efficient and on-target
+- Overall score is the mean of all three, returned in state as judge_overall
 
 ## Problems Faced and How They Were Handled
 
@@ -162,6 +172,9 @@ Qdrant data was lost between sessions because the container was started without 
 
 **Input_guard node never executed**
 The input_guard node was added to the graph but the conditional edge from the router still pointed directly to retrieval instead of input_guard, so the node was wired up but never reached. Fixed by correcting the router's "continue" branch to point to input_guard, which then continues to retrieval.
+
+**Judge receiving empty chunks despite retrieval succeeding**
+The judge agent was reading chunks as an empty list even though retrieved_chunks showed 3 in the final state. Root cause: a typo — `state.get("retrived_chunks", [])` (missing the second e). Because the key didn't exist in state, it defaulted to an empty list silently. Fixed by correcting the spelling to `retrieved_chunks`.
 
 ## Setup
 
