@@ -1,4 +1,4 @@
-from retrieval.fusion import retrieve_hybrid
+from retrieval.fusion import retrieve_for_session
 
 def retrieval_agent(state, llm, index):
     rewrite_prompt = f"""You are a search query optimizer.
@@ -11,15 +11,12 @@ Rewritten query:"""
     rewritten_query = rewritten.text.strip()
     print(f"Rewritten query: {rewritten_query}")
 
-    unique_chunks = retrieve_hybrid(index, rewritten_query, similarity_top_k=3)
+    document_ids = state.get("document_ids") or []
+    unique_chunks = retrieve_for_session(index, rewritten_query, document_ids, similarity_top_k=5)
     print(f"Retrieved {len(unique_chunks)} unique chunks")
 
     return {
-        "original_query": state["original_query"],
-        "query_type": state.get("query_type"),
-        "should_block": state.get("should_block"),
-        "block_reason": state.get("block_reason"),
+        **state,
         "rewritten_query": rewritten_query,
         "retrieved_chunks": unique_chunks,
-        "draft_answer": state.get("draft_answer")
     }

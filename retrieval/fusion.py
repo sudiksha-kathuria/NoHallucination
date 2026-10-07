@@ -1,13 +1,21 @@
 from llama_index.core.vector_stores.types import VectorStoreQueryMode
+from llama_index.core.vector_stores import MetadataFilter, MetadataFilters, FilterOperator
 
-def get_hybrid_retriever(index, similarity_top_k: int = 3):
-    return index.as_retriever(
-        vector_store_query_mode=VectorStoreQueryMode.HYBRID,
-        similarity_top_k=similarity_top_k
+
+def retrieve_for_session(index, query: str, document_ids: list, similarity_top_k: int = 5):
+    """Dense retrieval filtered to only the session's active documents."""
+    filters = MetadataFilters(
+        filters=[
+            MetadataFilter(key="document_id", value=doc_id, operator=FilterOperator.EQ)
+            for doc_id in document_ids
+        ],
+        condition="or",  # match any of the active docs
     )
-
-def retrieve_hybrid(index, query: str, similarity_top_k: int = 3):
-    retriever = get_hybrid_retriever(index, similarity_top_k)
+    retriever = index.as_retriever(
+        vector_store_query_mode=VectorStoreQueryMode.DEFAULT,
+        similarity_top_k=similarity_top_k,
+        filters=filters,
+    )
     results = retriever.retrieve(query)
     seen_ids = set()
     unique_chunks = []

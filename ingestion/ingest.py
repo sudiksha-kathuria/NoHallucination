@@ -1,6 +1,6 @@
 import os
 import tempfile
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext
+from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
@@ -18,17 +18,22 @@ def ingest_file_for_user(file_bytes, file_name, file_type, collection_name, docu
         tmp.write(file_bytes)
         tmp_path = tmp.name
     try:
+        from llama_index.core import SimpleDirectoryReader
         documents = SimpleDirectoryReader(input_files=[tmp_path]).load_data()
+
         for doc in documents:
             doc.metadata["document_id"] = document_id
             doc.metadata["file_name"] = file_name
+
         all_nodes = []
         for doc in documents:
             chunks = chunk_document(doc, embedding_model)
             for chunk in chunks:
                 chunk.metadata["document_id"] = document_id
             all_nodes.extend(chunks)
+
         _ensure_collection(collection_name)
+
         vector_store = QdrantVectorStore(client=qdrant_client, collection_name=collection_name)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         VectorStoreIndex(
@@ -49,3 +54,4 @@ def _ensure_collection(collection_name):
             collection_name=collection_name,
             vectors_config=VectorParams(size=384, distance=Distance.COSINE),
         )
+        print(f"[Ingest] Created collection '{collection_name}'")
