@@ -8,6 +8,7 @@ import uuid
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -22,6 +23,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 service_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 app = FastAPI(title="NoHallucination API", version="1.0.0")
+security = HTTPBearer()
 
 app.add_middleware(
     CORSMiddleware,
