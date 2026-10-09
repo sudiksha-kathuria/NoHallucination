@@ -53,10 +53,8 @@ class QueryRequest(BaseModel):
     question: str
 
 
-def get_current_user(authorization: str = Header(...)):
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header format")
-    token = authorization.split(" ")[1]
+def get_current_user(credentials=Depends(security)):
+    token = credentials.credentials
     try:
         response = supabase.auth.get_user(token)
         user = response.user
@@ -108,12 +106,12 @@ async def upload_document(file: UploadFile = File(...), user=Depends(get_current
     collection_name = f"user_{user_id}_docs"
     try:
         file_bytes = await file.read()
-        file_name = file.filename
-        file_type = file_name.split(".")[-1].lower()
+        filename = file.filename
+        file_type = filename.split(".")[-1].lower()
         document_id = str(uuid.uuid4())
         ingest_file_for_user(
             file_bytes=file_bytes,
-            file_name=file_name,
+            file_name=filename,
             file_type=file_type,
             collection_name=collection_name,
             document_id=document_id,
@@ -121,13 +119,13 @@ async def upload_document(file: UploadFile = File(...), user=Depends(get_current
         service_client.table("documents").insert({
             "id": document_id,
             "user_id": user_id,
-            "filename": file_name,
+            "filename": filename,
             "file_type": file_type,
             "collection_name": collection_name,
         }).execute()
         return {
             "document_id": document_id,
-            "filename": file_name,
+            "filename": filename,
             "collection": collection_name,
             "message": "Document uploaded and indexed successfully"
         }
@@ -220,7 +218,7 @@ def remove_document_from_session(session_id: str, document_id: str, user=Depends
 
 @app.post("/query")
 def run_query(body: QueryRequest, user=Depends(get_current_user)):
-    from notebooks.pipeline import run_pipeline
+    from pipeline.pipeline import run_pipeline
     user_id = user.id
     session = service_client.table("sessions").select("id").eq("id", body.session_id).eq("user_id", user_id).execute()
     if not session.data:

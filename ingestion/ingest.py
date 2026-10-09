@@ -8,7 +8,7 @@ from qdrant_client.models import Distance, VectorParams
 from ingestion.chunker import chunk_document
 from ingestion.embedder import get_embedding_model
 
-qdrant_client = QdrantClient(host="localhost", port=6333)
+qdrant_client = QdrantClient( host=os.getenv("QDRANT_HOST", "localhost"), port=int(os.getenv("QDRANT_PORT", 6333)))
 embedding_model = get_embedding_model()
 
 

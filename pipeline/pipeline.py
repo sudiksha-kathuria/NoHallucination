@@ -19,9 +19,9 @@ from judge.judge import judge_agent
 
 load_dotenv()
 
-qdrant_client = QdrantClient(host="localhost", port=6333)
+qdrant_client = QdrantClient(host=os.getenv("QDRANT_HOST", "localhost"),port=int(os.getenv("QDRANT_PORT", 6333)))
 embedding_model = get_embedding_model()
-llm = Groq(model="qwen/qwen3-8b-8192", api_key=os.getenv("GROQ_API_KEY"), max_tokens=800)
+llm = Groq(model="llama3-8b-8192", api_key=os.getenv("GROQ_API_KEY"), max_tokens=800)
 
 
 class PipelineState(TypedDict, total=False):
