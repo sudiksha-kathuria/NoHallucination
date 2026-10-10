@@ -9,6 +9,7 @@ Most RAG systems deliver answers without verifying them. NoHallucination does no
 A multi-agent pipeline that retrieves, generates, guards, and judges every response before delivery. If an answer fails verification, the system retries or refuses. It never silently hallucinates.
 
 ## Architecture
+```text
 User Query
     ↓
 Router Agent (classifies intent, detects injections)
@@ -22,21 +23,26 @@ Guardrail Layer (PII detection, toxicity check)
 LLM-as-a-Judge (groundedness, relevance, completeness)
     ↓
 Verified Answer or Transparent Refusal
+```
 
 ## Tech Stack
 | Component | Technology |
 |---|---|
 | Document ingestion | LlamaIndex |
-| Vector database | Qdrant |
+| Vector database | Qdrant Cloud |
 | Embeddings | BAAI/bge-small-en-v1.5 (HuggingFace) |
 | Hybrid search | Dense + BM25 sparse via Qdrant |
 | Agent orchestration | LangGraph |
-| LLM | Qwen/qwen3-8b-27b via Groq |
+| LLM | Qwen/qwen3-8b via Groq |
 | Input/Output guardrails | Microsoft Presidio, Detoxify |
-| LLM evaluation | LLM-as-a-Judge with RAGAS metrics |
-| Observability | LangSmith |
+| LLM evaluation | Code-based judge (ROUGE-1, cosine similarity) |
 | API layer | FastAPI |
-| Containerisation | Docker |
+| Deployment | Railway |
+
+## Live API
+The backend is deployed and accessible at:
+
+    https://nohallucination-production.up.railway.app/
 
 ## Key Features
 - **Domain agnostic:** works with any documents in any format (PDF, DOCX, TXT, MD)
@@ -46,15 +52,14 @@ Verified Answer or Transparent Refusal
 - **LLM-as-a-Judge:** scores every answer for groundedness, relevance, and completeness
 - **Retry loop:** automatically retries generation if judge score is below threshold
 - **Transparent refusal:** returns source documents directly if answer cannot be verified
-- **Full observability:** every decision traced and logged via LangSmith
+- **REST API:** fully deployed FastAPI backend with interactive docs at `/docs`
 
 ## Project Structure
-
 ```text
 NoHallucination/
 │
 ├── notebooks/
-│   ├── main.ipynb
+│   └── main.ipynb
 │
 ├── ingestion/
 │   ├── loader.py
@@ -83,10 +88,11 @@ NoHallucination/
 │   └── main.py
 │
 ├── sample_docs/
-├── qdrant_storage/
 ├── test_docs/
 ├── requirements.txt
-├── docker-compose.yml
+├── Procfile
+├── railway.toml
+├── nixpacks.toml
 └── README.md
 ```
 
@@ -95,7 +101,8 @@ NoHallucination/
 - [x] Phase 2: Stateful multi-agent orchestration
 - [x] Phase 3: Guardrail layer
 - [x] Phase 4: LLM-as-a-Judge evaluator
-- [ ] Phase 5: Observability and deployment
+- [x] Phase 5: FastAPI deployment on Railway with Qdrant Cloud
+- [ ] Phase 6: React frontend
 
 ## Phase 1: What is Built
 
@@ -108,7 +115,6 @@ NoHallucination/
 - Dense vector search using BAAI/bge-small-en-v1.5 embeddings
 - Sparse BM25 keyword search via Qdrant FastEmbed
 - Hybrid fusion combining both retrieval methods
-- Persistent storage via Docker volume mount
 
 ## Phase 2: What is Built
 
@@ -121,66 +127,73 @@ NoHallucination/
 
 **Input guardrail — PII detection**
 - Runs after the router and before retrieval
-- Uses Microsoft Presidio's AnalyzerEngine with spaCy's en_core_web_lg English model for named entity recognition
-- Detects personally identifiable information in the user's query — names, email addresses, phone numbers, locations, and other sensitive identifiers
-- If PII is found, the pipeline blocks immediately and returns the entity types detected as the block reason
-- If no PII is found, the query proceeds to retrieval
+- Uses Microsoft Presidio's AnalyzerEngine with spaCy's en_core_web_lg English model
+- Detects names, email addresses, phone numbers, locations, and other sensitive identifiers
+- Blocks and returns entity types detected if PII is found
 
 **Output guardrail — toxicity detection**
 - Runs after synthesis and before the final response is returned
-- Uses Detoxify's "original" model, trained on the Jigsaw Toxic Comment Classification dataset
-- Scores the generated answer across six categories: toxicity, severe toxicity, obscene, threat, insult, and identity attack
-- If the toxicity score exceeds 0.5, the pipeline blocks the response and returns the score as the block reason
-- If the answer is clean, all six scores are stored in state and the response is returned
-
-**Graph structure**
-
-START → router → (blocked → END) or (continue → retrieval) → synthesis → END
+- Uses Detoxify's "original" model trained on the Jigsaw Toxic Comment Classification dataset
+- Scores across six categories: toxicity, severe toxicity, obscene, threat, insult, and identity attack
+- Blocks response if toxicity score exceeds 0.5
 
 ## Phase 4: What is Built
 
 **Code-based evaluation (Judge Layer)**
 - Runs after the output guardrail on every non-blocked response
-- Evaluates answer quality using three deterministic metrics — no LLM calls required
-- Faithfulness: fraction of answer tokens present in the retrieved chunks (ROUGE-1 style precision) — measures whether the answer is grounded in source documents
-- Relevancy: cosine similarity between the query embedding and answer embedding using BAAI/bge-small-en-v1.5 — measures semantic alignment between question and answer
-- Context Utilization: fraction of retrieved chunks with at least 3 overlapping tokens with the answer — measures whether retrieval was efficient and on-target
-- Overall score is the mean of all three, returned in state as judge_overall
+- Faithfulness: fraction of answer tokens present in retrieved chunks (ROUGE-1 style precision)
+- Relevancy: cosine similarity between query embedding and answer embedding
+- Context Utilization: fraction of retrieved chunks with at least 3 overlapping tokens with the answer
+- Overall score is the mean of all three, returned as judge_overall
+
+## Phase 5: What is Built
+
+**FastAPI backend**
+- REST API wrapping the full LangGraph pipeline
+- Endpoints for document ingestion and query answering
+- Interactive API docs at `/docs`
+
+**Deployment**
+- Backend deployed on Railway via Nixpacks (no Docker required)
+- Vector store migrated to Qdrant Cloud (free tier)
+- Environment variables managed via Railway dashboard
 
 ## Problems Faced and How They Were Handled
 
 **Groq model unavailable**
-`llama-3.3-70b-versatile` was not available on the free tier. Switched to `qwen/qwen3-8b-27b`, which works but produces `<think>...</think>` blocks in responses. Added stripping logic in the synthesis agent to clean these before returning the answer.
+`llama-3.3-70b-versatile` was not available on the free tier. Switched to `qwen/qwen3-8b`, which produces `<think>...</think>` blocks in responses. Added stripping logic in the synthesis agent to clean these before returning.
 
 **Qwen thinking tokens in rewritten queries**
-The retrieval agent uses the LLM to rewrite queries before searching. Qwen sometimes wraps the rewritten query in `<think>` tags, which then gets passed to the retriever and degrades search quality. Fixed by stripping the think block from `rewritten_query` before retrieval.
+The retrieval agent uses the LLM to rewrite queries before searching. Qwen sometimes wraps the rewritten query in `<think>` tags, degrading search quality. Fixed by stripping the think block from `rewritten_query` before retrieval.
 
 **Qdrant hybrid search setup**
-Setting up hybrid dense + sparse search required Qdrant FastEmbed (`Qdrant/bm25`) as the sparse model. Initial setup failed because the vector store was not initialized with `enable_hybrid=True` and the sparse vector name was not configured. Fixed by passing the correct parameters to `QdrantVectorStore`.
+Setting up hybrid dense + sparse search required Qdrant FastEmbed as the sparse model. Initial setup failed because the vector store was not initialized with `enable_hybrid=True`. Fixed by passing the correct parameters to `QdrantVectorStore`.
 
 **Semantic chunker producing too few chunks**
-For short documents, `SemanticSplitterNodeParser` at threshold 95 produced fewer than 3 chunks, making retrieval ineffective. Added automatic retry logic: if a document produces fewer than 3 chunks at threshold 95, it retries at threshold 70.
+For short documents, `SemanticSplitterNodeParser` at threshold 95 produced fewer than 3 chunks. Added automatic retry at threshold 70.
 
 **Duplicate chunks in Qdrant**
-Re-running the ingestion cell without clearing the collection first caused the same documents to be stored multiple times under different node IDs. Deduplication by node ID in the retrieval agent only partially helped since all 3 retrieved results were duplicates of the same chunk. Fixed by deleting the collection and re-ingesting once cleanly.
+Re-running ingestion without clearing the collection caused duplicates. Fixed by deleting the collection and re-ingesting cleanly.
 
 **LangGraph state not propagating between nodes**
-Retrieved chunks were showing as 0 in the final result even though the retrieval agent was finding 3 chunks. Root cause: a typo in `PipelineState` — the field was defined as `retrieved_chunk` (no s) but all agents used `retrieved_chunks`. LangGraph silently drops keys that are not in the TypedDict schema, so the chunks were never written to state. Fixed by correcting the field name.
-
-**Docker container not persisting between sessions**
-Qdrant data was lost between sessions because the container was started without a volume mount. Fixed by adding `-v $(pwd)/qdrant_storage:/qdrant/storage` and `--restart unless-stopped` to the docker run command.
+Retrieved chunks showed as 0 in final state due to a typo — `retrieved_chunk` vs `retrieved_chunks`. LangGraph silently drops keys not in the TypedDict schema. Fixed by correcting the field name.
 
 **Input_guard node never executed**
-The input_guard node was added to the graph but the conditional edge from the router still pointed directly to retrieval instead of input_guard, so the node was wired up but never reached. Fixed by correcting the router's "continue" branch to point to input_guard, which then continues to retrieval.
+The conditional edge from the router still pointed directly to retrieval instead of input_guard. Fixed by correcting the router's "continue" branch.
 
-**Judge receiving empty chunks despite retrieval succeeding**
-The judge agent was reading chunks as an empty list even though retrieved_chunks showed 3 in the final state. Root cause: a typo — `state.get("retrived_chunks", [])` (missing the second e). Because the key didn't exist in state, it defaulted to an empty list silently. Fixed by correcting the spelling to `retrieved_chunks`.
+**Judge receiving empty chunks**
+A typo — `retrived_chunks` instead of `retrieved_chunks` — caused the judge to default to an empty list silently. Fixed by correcting the spelling.
+
+**Docker on macOS M-series**
+`sentence-transformers` pulls GPU/CUDA torch on Linux, causing multi-GB downloads and disk full errors in Docker. Fixed by pinning `torch --index-url https://download.pytorch.org/whl/cpu` before `sentence-transformers` in requirements.txt. Abandoned local Docker in favour of Railway deployment.
+
+**Railway deployment — no start command detected**
+Railpack could not detect the FastAPI app in the `api/` subfolder. Fixed by adding `nixpacks.toml` and `railway.toml` with an explicit start command, and removing `.dockerignore` which was causing Railway to switch to Docker build mode.
 
 ## Setup
 
 **Prerequisites**
 - Python 3.11+
-- Docker Desktop
 
 **Installation**
 
@@ -198,18 +211,25 @@ Install dependencies:
 
     pip install -r requirements.txt
 
-Start Qdrant:
+**Environment variables**
 
-    docker run -p 6333:6333 \
-      -v $(pwd)/qdrant_storage:/qdrant/storage \
-      --restart unless-stopped \
-      qdrant/qdrant
+Create a `.env` file in the project root:
+
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_ANON_KEY=your_supabase_anon_key
+    SUPABASE_SERVICE_KEY=your_supabase_service_key
+    GROQ_API_KEY=your_groq_api_key
+    QDRANT_URL=your_qdrant_cloud_url
+    QDRANT_API_KEY=your_qdrant_api_key
 
 **Adding your own documents**
-Place your documents in the `test_docs/` folder. Supported formats: PDF, DOCX, TXT, MD. This folder is gitignored to protect your privacy. Sample documents are provided in `sample_docs/`.
+Place your documents in the `test_docs/` folder. Supported formats: PDF, DOCX, TXT, MD. This folder is gitignored. Sample documents are in `sample_docs/`.
 
-**Running the notebook**
-Open `notebooks/phase1_exploration.ipynb` in VS Code, select the `.venv` kernel, and run cells in order.
+**Running locally**
+
+    uvicorn api.main:app --reload
+
+Then open `http://localhost:8000/docs`.
 
 ## Motivation
 This project was built to solve a real problem: AI systems that sound confident while being wrong. A system that refuses to answer when it cannot verify its output is more valuable than one that always generates something. NoHallucination is built on that principle.
